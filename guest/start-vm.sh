@@ -19,9 +19,19 @@ for p in "$SSH_PORT" $PORTS; do
   FW="$FW,hostfwd=tcp:127.0.0.1:$p-:$tgt"
 done
 
-pkill -f 'qemu-system-x86_64 -name android-mc-gues[t]' 2>/dev/null || true
-sleep 2
-rm -f "$VM_DIR/qemu.pid"
+PID_FILE="$VM_DIR/qemu.pid"
+if [ -f "$PID_FILE" ]; then
+  old_pid=$(cat "$PID_FILE")
+  if [[ "$old_pid" =~ ^[0-9]+$ ]] && kill -0 "$old_pid" 2>/dev/null; then
+    if tr '\0' ' ' < "/proc/$old_pid/cmdline" | grep -Fq -- "-drive file=$DISK,"; then
+      echo "guest already running (pid $old_pid)"
+      exit 0
+    fi
+    echo "pid file points to another process ($old_pid); refusing to start" >&2
+    exit 1
+  fi
+  rm -f "$PID_FILE"
+fi
 
 setsid qemu-system-x86_64 -name android-mc-guest \
   -enable-kvm -cpu host -smp "$SMP" -m "$MEM" \
@@ -30,6 +40,6 @@ setsid qemu-system-x86_64 -name android-mc-guest \
   -netdev "user,id=n0$FW" -device virtio-net-pci,netdev=n0 \
   -vga none -device virtio-gpu-gl-pci,hostmem=1024M \
   -display "egl-headless,rendernode=$RENDER_NODE" \
-  -serial file:"$VM_DIR/serial.log" -pidfile "$VM_DIR/qemu.pid" -daemonize
+  -serial file:"$VM_DIR/serial.log" -pidfile "$PID_FILE" -daemonize
 
-echo "qemu pid=$(cat "$VM_DIR/qemu.pid")  forwards=$FW"
+echo "qemu pid=$(cat "$PID_FILE")  forwards=$FW"

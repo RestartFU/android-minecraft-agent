@@ -54,6 +54,7 @@ export MC_SSH_PORT=2222
 export MC_IMAGE=lunar/redroid13-gapps
 export MC_GPU_MODE=host          # host (virtio-gpu/virgl) | guest (SwiftShader)
 export MC_PORT_BASE=5555
+export MC_DOCKER=docker         # guest user belongs to docker group
 
 mc launch --id main --data-dir /data/mc/main      # ~1s resume, ~20s cold boot
 mc state
@@ -66,6 +67,11 @@ mc stop                                            # pause (fast); mc stop --rem
 
 `mc screenshot` prints a file path by default (the agent then reads the PNG), or writes the
 raw PNG to stdout with `--stdout`.
+
+For detailed image checks, launch at `--width 1280 --height 720`. Resolution is fixed when a
+container is created; stop it with `--remove` before relaunching at a new size. Its `/data`
+directory, including sign-ins and Minecraft data, remains on the guest. `mc click X Y` uses
+the last screenshot's coordinates, including downscaled screenshots, across CLI invocations.
 
 ## Performance
 
