@@ -9,12 +9,7 @@
   },
   "scripts": {
     "mc": "bun run src/mc.ts",
-    "mcp": "bun run src/mcp.ts",
     "typecheck": "bunx tsc --noEmit"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.0",
-    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",

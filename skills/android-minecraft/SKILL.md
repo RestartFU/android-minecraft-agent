@@ -6,8 +6,7 @@ description: Use when driving a real Minecraft Bedrock client on Android (redroi
 # Minecraft on Android (redroid) via `mc`
 
 A real Bedrock client runs on Android 13 (redroid) inside an Ubuntu 22.04 KVM guest, driven
-over `adb`. Prefer the `mc` CLI; an MCP (`android-minecraft-agent`) exposes the same tools
-under the `mcpelauncher-agent` names if that's what the environment provides.
+over `adb` by the `mc` CLI.
 
 ## Setup (once per shell)
 
@@ -46,9 +45,3 @@ mc stop                        # pause (fast relaunch); --remove frees memory
   free the ~3GB the container holds.
 - **Don't kill other tasks' clients.** `mc list` shows running instances; only touch your own.
 - The ~20s cold boot is Android `init`; the fast path is resuming a paused container.
-
-## MCP equivalent
-
-If the environment exposes the MCP instead of the CLI, the tools are: `launch`, `stop`,
-`list`, `state`, `screenshot`, `key`, `hold_key`, `type`, `chat`, `look`, `click`,
-`mouse_move_to`, `scroll`, `add_server`, `open_uri`, `connect`, `set_fps`, `wait`, `log`.

@@ -1,7 +1,7 @@
 # android-minecraft-agent
 
 Drive a **real Minecraft Bedrock** client running on **Android (redroid)** inside a KVM
-guest — from a CLI (`mc`) or an MCP server.
+guest — from a single `mc` CLI.
 
 This is a replacement for the `mcpelauncher` Linux client, which is a shim (reimplemented
 Android runtime) that is unstable, has broken chat/IME, and misses features that depend on
@@ -28,7 +28,6 @@ Fedora 44 host (kernel 6.19)                     <- runs QEMU + adb only
 |---|---|
 | `src/lib.ts` | Core: containers, launch/stop, screenshot, input, chat (the one source of truth) |
 | `src/mc.ts` | `mc` CLI |
-| `src/mcp.ts` | MCP server (thin wrapper; tool names match `mcpelauncher-agent`) |
 | `skills/android-minecraft/` | Agent skill for using the CLI |
 | `guest/` | QEMU start script + GApps Dockerfile for the guest |
 
@@ -64,33 +63,6 @@ mc stop                                            # pause (fast); mc stop --rem
 `mc screenshot` prints a file path by default (the agent then reads the PNG), or writes the
 raw PNG to stdout with `--stdout`.
 
-## MCP
-
-```jsonc
-{
-  "mcp": {
-    "minecraft": {
-      "type": "local",
-      "command": ["bun", "run", "/path/to/android-minecraft-agent/src/mcp.ts"],
-      "enabled": true,
-      "environment": {
-        "MC_ADB": "adb",
-        "MC_SSH_KEY": "/home/you/.ssh/mc-android",
-        "MC_SSH_TARGET": "root@127.0.0.1",
-        "MC_SSH_PORT": "2222",
-        "MC_IMAGE": "lunar/redroid13-gapps",
-        "MC_GPU_MODE": "host",
-        "MC_PORT_BASE": "5555"
-      }
-    }
-  }
-}
-```
-
-Tool names match the old backend: `launch`, `stop`, `list`, `state`, `screenshot`, `key`,
-`hold_key`, `type`, `chat`, `look`, `click`, `mouse_move_to`, `scroll`, `add_server`,
-`open_uri`, `connect`, `set_fps`, `wait`, `log`.
-
 ## Performance
 
 Measured on an AMD Ryzen 9 7900X host (guest 8 vCPU / 8 GB, hardware virgl), client in a
@@ -100,14 +72,13 @@ server world:
 |---|---|
 | Warm relaunch (`stop` then `launch`) | **~1.3 s** |
 | Cold launch (new container) | ~20 s |
-| `screenshot` 854×480 | ~138 ms (MCP) / ~155 ms (CLI) |
+| `screenshot` 854×480 | ~155 ms |
 | `screenshot` 426 px | ~175 ms |
 | `state` / `click` | ~20 ms |
 | Host CPU per client | ~0.4–0.5 core |
 
-Instance lookups are cached (in the MCP process and on disk for the CLI) because an SSH
-`docker ps` costs ~165 ms per call; `stop` pauses the container so a relaunch skips Android
-init.
+Instance lookups are cached on disk because an SSH `docker ps` costs ~165 ms per call;
+`stop` pauses the container so a relaunch skips Android init.
 
 ## Notes
 
