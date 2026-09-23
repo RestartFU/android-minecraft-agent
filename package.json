@@ -1,0 +1,23 @@
+{
+  "name": "android-minecraft-agent",
+  "version": "0.1.0",
+  "description": "Drive a real Minecraft Bedrock client on Android (redroid) in a KVM guest, from a CLI or an MCP server.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "mc": "bin/mc"
+  },
+  "scripts": {
+    "mc": "bun run src/mc.ts",
+    "mcp": "bun run src/mcp.ts",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.6.0"
+  }
+}
