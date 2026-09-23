@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
-// `mc` - CLI for android-minecraft-agent. This is the source of truth; the MCP is a thin wrapper.
+// `mc` - CLI for android-minecraft-agent.
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mc } from "./lib.ts";
 
-type Flags = { _: string[] } & Record<string, string | boolean>;
+type Flags = { _: string[] } & Record<string, string | boolean | string[]>;
 
 function parse(argv: string[]): Flags {
   const f: Flags = { _: [] };
@@ -23,6 +23,12 @@ function parse(argv: string[]): Flags {
 const str = (f: Flags, k: string) => (typeof f[k] === "string" ? (f[k] as string) : undefined);
 const num = (f: Flags, k: string) => (f[k] !== undefined ? Number(f[k]) : undefined);
 const bool = (f: Flags, k: string) => f[k] === true || f[k] === "true";
+function requiredNumber(value: string | undefined, name: string): number {
+  if (value === undefined || value.trim() === "" || !Number.isFinite(Number(value))) {
+    throw new Error(`${name} must be a number`);
+  }
+  return Number(value);
+}
 const out = (v: unknown) => console.log(typeof v === "string" ? v : JSON.stringify(v, null, 2));
 
 const HELP = `mc - drive a Minecraft Bedrock client on Android (redroid in a KVM guest)
@@ -34,7 +40,7 @@ Usage: mc <command> [flags]
   list
   state  [--id main]
   screenshot [--id main] [--width N] [--out FILE] [--stdout]
-  click X Y [--id main] [--action tap|press|release] [--hold-ms N]
+  click X Y [--id main] [--action tap|press] [--hold-ms N]
   type  "text" [--id main]
   chat  "message" [--id main]
   key   KEY [--id main]
@@ -89,7 +95,8 @@ export async function main(argv: string[]): Promise<number> {
       return 0;
     }
     case "click":
-      out(await mc.click(Number(f._[0]), Number(f._[1]), { id, action: str(f, "action"), holdMs: num(f, "hold-ms") }));
+      if (f["x"] !== undefined || f["y"] !== undefined) throw new Error("click takes positional X Y: mc click 426 240");
+      out(await mc.click(requiredNumber(f._[0], "X"), requiredNumber(f._[1], "Y"), { id, action: str(f, "action"), holdMs: num(f, "hold-ms") }));
       return 0;
     case "type":
       out(await mc.type(id, f._.join(" ")));

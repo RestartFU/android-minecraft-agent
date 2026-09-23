@@ -66,7 +66,7 @@ Check (guest is up, right kernel):
 
 ```bash
 ssh -i "$VM/id_ed25519" -p 2222 -o StrictHostKeyChecking=no lunar@127.0.0.1 \
-  'uname -r; sudo docker --version; lsmod | grep binder'
+  'uname -r; docker --version; lsmod | grep binder'
 # expect: 5.15.x-... ; Docker ... ; binder_linux ...
 ```
 
@@ -85,6 +85,8 @@ This is redroid 13 (Android 13) with MindTheGapps overlaid, so Google Play works
 ```bash
 git clone git@github.com:RestartFU/android-minecraft-agent.git
 cd android-minecraft-agent
+bun install
+export PATH="$PWD/bin:$PATH"    # add this repo's CLI for the current shell
 cat >> ~/.bashrc <<'EOF'
 export MC_ADB=adb
 export MC_SSH_KEY=$HOME/android-mc-vm/id_ed25519
@@ -93,11 +95,13 @@ export MC_SSH_PORT=2222
 export MC_IMAGE=lunar/redroid13-gapps
 export MC_GPU_MODE=host
 export MC_PORT_BASE=5555
+export MC_DOCKER=docker
 EOF
 . ~/.bashrc
 ```
 
-Check: `bun run src/mc.ts list` prints `[]` (no instances yet).
+Add the repo's `bin` directory to your shell's persistent PATH if you want `mc` in new
+shells. Check: `mc list` prints `[]` (no instances yet).
 
 ## 5. First run: install Minecraft and sign in
 
@@ -114,6 +118,19 @@ screenshots (`mc click X Y --action press --hold-ms 150` for game buttons):
    sign-in is required to join online servers; Play sign-in alone is not enough.
 
 Both persist in `/data/mc/main`, so later `launch` calls skip this.
+
+Use Play's **Install** or **Update** for Minecraft. A sideloaded copy can fail its license
+check with “Buy game to continue” even when the Google account owns the game. If Play shows
+**Pending** indefinitely on a fresh redroid container, complete Android provisioning:
+
+```bash
+adb -s 127.0.0.1:5555 shell settings put global device_provisioned 1
+adb -s 127.0.0.1:5555 shell settings put secure user_setup_complete 1
+```
+
+`mc launch` now sets these flags automatically for new and resumed containers. Retry the
+Play download after they are set. Do not buy again solely because a sideloaded app shows
+the license gate.
 
 Check: `mc state` shows Minecraft focused, `mc screenshot` shows the game.
 
@@ -144,6 +161,9 @@ mc launch --id alt --data-dir /data/mc/alt
 | `gralloc-2-0 signal 8` in guest dmesg | Transient; check `dumpsys SurfaceFlinger \| grep GLES:` still reports `virgl`. |
 | `InitialConnection-146` when joining | The client is not signed into Xbox Live (step 5). |
 | Slow screenshots | Install ImageMagick (`magick`) for fast downscaling. |
+| Play download stays Pending | Check `device_provisioned` and `user_setup_complete` as above, then retry in Play. |
+| “Buy game to continue” after sideloading | Install or update from Play with the owning account. Do not infer ownership from the sideloaded build's gate. |
+| Resolution unchanged after `mc launch --width` | Existing container keeps its original size. `mc stop --id ID --remove`, then relaunch with width and height; `/data` persists. |
 
 ## Layout
 

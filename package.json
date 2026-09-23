@@ -1,7 +1,7 @@
 {
   "name": "android-minecraft-agent",
   "version": "0.1.0",
-  "description": "Drive a real Minecraft Bedrock client on Android (redroid) in a KVM guest, from a CLI or an MCP server.",
+  "description": "Drive a real Minecraft Bedrock client on Android (redroid) in a KVM guest from the mc CLI.",
   "type": "module",
   "license": "MIT",
   "bin": {

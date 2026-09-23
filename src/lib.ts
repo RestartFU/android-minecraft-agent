@@ -1,10 +1,15 @@
 // Core of android-minecraft-agent: talks to redroid (Android 13) containers running
-// inside a KVM guest, over SSH (docker) and adb. Shared by the `mc` CLI and the MCP server.
+// inside a KVM guest, over SSH (docker) and adb.
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 export type Size = { w: number; h: number };
 export type Container = { id: string; name: string; port: number; status: string; size: Size };
+
+// adb shell and ssh execute strings through a shell, even when Bun receives an argv array.
+export function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
 
 export type Cfg = {
   adb: string;
@@ -13,6 +18,7 @@ export type Cfg = {
   sshPort: string;
   image: string;
   gpuMode: string;
+  docker: string;
   portBase: number;
   cacheFile: string;
   cacheMs: number;
@@ -28,6 +34,8 @@ export function loadCfg(env: Record<string, string | undefined> = process.env): 
     sshPort: env.MC_SSH_PORT ?? "2222",
     image: env.MC_IMAGE ?? "redroid/redroid:13.0.0-latest",
     gpuMode: env.MC_GPU_MODE ?? "host",
+    // Guest docker command. Default assumes the SSH user is in the docker group (no sudo).
+    docker: env.MC_DOCKER ?? "docker",
     portBase: Number(env.MC_PORT_BASE ?? 5555),
     cacheFile: env.MC_CACHE ?? `${cacheHome}/mc-android/instances.json`,
     cacheMs: Number(env.MC_CACHE_MS ?? 3000),
@@ -37,7 +45,6 @@ export function loadCfg(env: Record<string, string | undefined> = process.env): 
 export class Mc {
   readonly cfg: Cfg;
   private sizes = new Map<number, Size>();
-  private shotScale = new Map<number, number>();
 
   constructor(cfg: Cfg = loadCfg()) {
     this.cfg = cfg;
@@ -74,7 +81,7 @@ export class Mc {
   private sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
   private async dm(cmd: string): Promise<string> {
-    const r = await this.ssh(`sudo docker ${cmd}`);
+    const r = await this.ssh(`${this.cfg.docker} ${cmd}`);
     if (r.code !== 0) throw new Error(r.err.trim() || `docker ${cmd} failed`);
     if (/^(run|start|unpause|pause|rm)\b/.test(cmd)) await this.clearCache();
     return r.out;
@@ -127,7 +134,7 @@ export class Mc {
     return c;
   }
   private async nextPort(): Promise<number> {
-    const used = new Set((await this.containers(true)).filter(isRunning).map((c) => c.port));
+    const used = new Set((await this.containers(true)).map((c) => c.port));
     let p = this.cfg.portBase;
     while (used.has(p)) p++;
     return p;
@@ -144,7 +151,8 @@ export class Mc {
     return false;
   }
   private async startGame(c: Container): Promise<boolean> {
-    await this.sh(c.port, "settings put system screen_off_timeout 2147483647; svc power stayon true; input keyevent 224");
+    // A fresh redroid image may boot with setup incomplete, leaving Play downloads Pending.
+    await this.sh(c.port, "settings put global device_provisioned 1; settings put secure user_setup_complete 1; settings put system screen_off_timeout 2147483647; svc power stayon true; input keyevent 224");
     const installed = (await this.sh(c.port, "pm path com.mojang.minecraftpe")).out.includes("package:");
     if (installed && !(await this.sh(c.port, "pidof com.mojang.minecraftpe")).out.trim()) {
       await this.sh(c.port, "am start -n com.mojang.minecraftpe/.MainActivity");
@@ -155,11 +163,16 @@ export class Mc {
   // ---- operations ----
   async launch(opts: { id?: string; dataDir?: string; width?: number; height?: number; fpsCap?: number; waitForMenu?: boolean } = {}) {
     const id = opts.id ?? "main";
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("id may contain only letters, numbers, hyphens, and underscores");
     const name = `mc-${id}`;
     const width = opts.width ?? 854;
     const height = opts.height ?? 480;
     const fps = opts.fpsCap ?? 30;
+    if (![width, height, fps].every((n) => Number.isInteger(n) && n > 0)) throw new Error("width, height, and fps must be positive integers");
     const existing = (await this.containers(true)).find((c) => c.id === id);
+    if (existing && ((opts.width !== undefined && opts.width !== existing.size.w) || (opts.height !== undefined && opts.height !== existing.size.h))) {
+      throw new Error(`instance ${id} is ${existing.size.w}x${existing.size.h}; run mc stop --id ${id} --remove before changing resolution (its /data is preserved)`);
+    }
     if (existing && isRunning(existing)) {
       // Container is up; make sure the game is running too.
       this.sizes.set(existing.port, existing.size);
@@ -182,11 +195,11 @@ export class Mc {
 
     const port = await this.nextPort();
     const dir = opts.dataDir ?? `/data/mc/${id}`;
-    await this.dm(`rm -f ${name} 2>/dev/null || true`);
+    await this.dm(`rm -f ${shellQuote(name)} 2>/dev/null || true`);
     await this.dm(
-      `run -itd --name ${name} --privileged --label mc.role=client --label mc.port=${port} --label mc.size=${width}x${height} ` +
-        `--device /dev/dri -v ${dir}:/data -p ${port}:5555 ${this.cfg.image} ` +
-        `androidboot.redroid_gpu_mode=${this.cfg.gpuMode} androidboot.use_memfd=true ` +
+      `run -itd --name ${shellQuote(name)} --privileged --label mc.role=client --label mc.port=${port} --label mc.size=${width}x${height} ` +
+        `--device /dev/dri -v ${shellQuote(`${dir}:/data`)} -p ${port}:5555 ${shellQuote(this.cfg.image)} ` +
+        `androidboot.redroid_gpu_mode=${shellQuote(this.cfg.gpuMode)} androidboot.use_memfd=true ` +
         `androidboot.redroid_width=${width} androidboot.redroid_height=${height} androidboot.redroid_dpi=160 androidboot.redroid_fps=${fps}`,
     );
     this.sizes.set(port, { w: width, h: height });
@@ -222,17 +235,34 @@ export class Mc {
     const c = await this.resolve(id);
     const { buf } = await this.runBin([this.cfg.adb, "-s", this.dev(c.port), "exec-out", "screencap", "-p"]);
     if (!width || width === c.size.w) {
-      this.shotScale.set(c.port, 1);
+      await this.saveShotScale(c.port, c.size.w, 1);
       return buf;
     }
     const out = await downscalePng(buf, width);
-    this.shotScale.set(c.port, c.size.w / (out ? width : c.size.w));
+    await this.saveShotScale(c.port, c.size.w, out ? c.size.w / width : 1);
     return out ?? buf;
   }
 
+  private async saveShotScale(port: number, deviceWidth: number, scale: number) {
+    const path = `${this.cfg.cacheFile}.shot-${port}`;
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, JSON.stringify({ deviceWidth, scale }));
+  }
+
+  private async shotScale(port: number, deviceWidth: number): Promise<number> {
+    try {
+      const saved = JSON.parse(await readFile(`${this.cfg.cacheFile}.shot-${port}`, "utf8"));
+      if (saved.deviceWidth === deviceWidth && Number.isFinite(saved.scale) && saved.scale > 0) return saved.scale;
+    } catch {}
+    return 1;
+  }
+
   async click(x: number, y: number, opts: { id?: string; button?: string; action?: string; holdMs?: number } = {}) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("click needs numeric X Y coordinates");
+    if (opts.action && !["tap", "press"].includes(opts.action)) throw new Error("click action must be tap or press");
+    if (opts.holdMs !== undefined && (!Number.isInteger(opts.holdMs) || opts.holdMs < 1)) throw new Error("hold-ms must be a positive integer");
     const c = await this.resolve(opts.id);
-    const sc = this.shotScale.get(c.port) ?? 1;
+    const sc = await this.shotScale(c.port, c.size.w);
     const px = Math.round(x * sc), py = Math.round(y * sc);
     const action = opts.action ?? "tap";
     const cmd = action === "tap" ? `input tap ${px} ${py}` : `input swipe ${px} ${py} ${px} ${py} ${opts.holdMs ?? 60}`;
@@ -242,7 +272,7 @@ export class Mc {
 
   async type(id: string | undefined, text: string) {
     const c = await this.resolve(id);
-    await this.sh(c.port, `input text '${text.replace(/ /g, "%s").replace(/'/g, "")}'`);
+    await this.sh(c.port, `input text ${shellQuote(text.replace(/ /g, "%s"))}`);
     return { ok: true };
   }
 
@@ -267,7 +297,7 @@ export class Mc {
     const s = this.sizeOf(c.port);
     await this.sh(c.port, `input tap ${Math.round(s.w * 0.5)} ${Math.round(s.h * 0.044)}`);
     await this.sleep(600);
-    await this.sh(c.port, `input text '${message.replace(/ /g, "%s").replace(/'/g, "")}'`);
+    await this.sh(c.port, `input text ${shellQuote(message.replace(/ /g, "%s"))}`);
     await this.sleep(200);
     await this.sh(c.port, `input tap ${Math.round(s.w * 0.946)} ${Math.round(s.h * 0.385)}`);
     return { ok: true };
@@ -292,7 +322,7 @@ export class Mc {
   async openUri(id: string | undefined, uri: string) {
     if (!uri.startsWith("minecraft:")) throw new Error("uri must start with minecraft:");
     const c = await this.resolve(id);
-    await this.sh(c.port, `am start -a android.intent.action.VIEW -d '${uri}'`);
+    await this.sh(c.port, `am start -a android.intent.action.VIEW -d ${shellQuote(uri)}`);
     return { ok: true, uri };
   }
   addServer(id: string | undefined, name: string, address: string) {
