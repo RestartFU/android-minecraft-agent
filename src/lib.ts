@@ -122,6 +122,8 @@ export class Mc {
       : cs.find((x) => isRunning(x));
     if (!c) throw new Error(id ? `instance ${id} not found` : "no running instance; run `mc launch` first");
     if (!isRunning(c)) throw new Error(`instance ${c.id} is not running (${isPaused(c) ? "paused - run `mc launch` to resume in ~1s" : c.status})`);
+    // Idempotent; recovers the adb connection after a VM restart.
+    await this.adb(c.port, ["connect", this.dev(c.port)]);
     return c;
   }
   private async nextPort(): Promise<number> {
@@ -158,7 +160,13 @@ export class Mc {
     const height = opts.height ?? 480;
     const fps = opts.fpsCap ?? 30;
     const existing = (await this.containers(true)).find((c) => c.id === id);
-    if (existing && isRunning(existing)) throw new Error(`instance ${id} already running`);
+    if (existing && isRunning(existing)) {
+      // Container is up; make sure the game is running too.
+      this.sizes.set(existing.port, existing.size);
+      const installed = await this.startGame(existing);
+      if (opts.waitForMenu) await this.sleep(6000);
+      return { id, port: existing.port, device: this.dev(existing.port), size: `${existing.size.w}x${existing.size.h}`, warm: true, minecraftInstalled: installed, note: "already running" };
+    }
 
     // Warm path: resume an existing Android system instead of rebooting it (~1s vs ~20s).
     if (existing) {
