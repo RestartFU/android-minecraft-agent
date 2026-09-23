@@ -30,8 +30,12 @@ Fedora 44 host (kernel 6.19)                     <- runs QEMU + adb only
 | `src/mc.ts` | `mc` CLI |
 | `skills/android-minecraft/` | Agent skill for using the CLI |
 | `guest/` | QEMU start script + GApps Dockerfile for the guest |
+| `SETUP.md` | Step-by-step setup (host → guest → Android → Minecraft) |
+| `AGENTS.md` | Agent entry point |
 
 ## Requirements
+
+Full walkthrough: [SETUP.md](./SETUP.md).
 
 - A KVM guest (Ubuntu 22.04, kernel 5.15) reachable over SSH, with Docker and the
   `lunar/redroid13-gapps` image (see `guest/`), plus `binder_linux` and `/dev/dri`.
