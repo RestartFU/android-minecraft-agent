@@ -53,6 +53,8 @@ export MC_SSH_TARGET=root@127.0.0.1
 export MC_SSH_PORT=2222
 export MC_IMAGE=lunar/redroid13-gapps
 export MC_GPU_MODE=host          # host (virtio-gpu/virgl) | guest (SwiftShader)
+# If host virgl resets the GPU, start the VM with VM_GPU_MODE=software
+# and set MC_GPU_MODE=guest so Android uses SwiftShader.
 export MC_PORT_BASE=5555
 export MC_DOCKER=docker         # guest user belongs to docker group
 
