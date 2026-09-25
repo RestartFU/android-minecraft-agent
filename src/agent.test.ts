@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { main } from "./mc.ts";
-import { Mc, loadCfg, shellQuote } from "./lib.ts";
+import { Mc, loadCfg, resourceIssues, shellQuote } from "./lib.ts";
 
 test("click rejects flag coordinates before contacting Android", async () => {
   await expect(main(["click", "--x", "10", "--y", "20"])).rejects.toThrow("positional X Y");
@@ -82,4 +82,30 @@ test("stop can remove a paused client without resuming it", async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("preflight requires host and guest headroom for new and resumed clients", () => {
+  const snapshot = {
+    host: { availableMiB: 4000, load1: 7, cpus: 8 },
+    guest: { availableMiB: 2500, load1: 2, cpus: 8 },
+  };
+  expect(resourceIssues(snapshot, "new")).toHaveLength(3);
+  expect(resourceIssues(snapshot, "resume")).toHaveLength(1);
+  expect(resourceIssues({ ...snapshot, host: { ...snapshot.host, load1: 4 } }, "resume")).toEqual([]);
+});
+
+test("launch checks resources before starting a client", async () => {
+  const mc = new Mc(loadCfg({ HOME: "/tmp" }));
+  const snapshot = {
+    host: { availableMiB: 8192, load1: 4, cpus: 8 },
+    guest: { availableMiB: 1024, load1: 1, cpus: 8 },
+  };
+  mc.containers = async () => [];
+  Object.defineProperty(mc, "resources", { value: async () => snapshot });
+  Object.defineProperty(mc, "dm", { value: async () => { throw new Error("started without headroom"); } });
+  await expect(mc.launch({ id: "new" })).rejects.toThrow("Android guest RAM");
+
+  mc.containers = async () => [{ id: "existing", name: "mc-existing", port: 5555, status: "Up", size: { w: 854, h: 480 } }];
+  Object.defineProperty(mc, "startGame", { value: async () => { throw new Error("started without headroom"); } });
+  await expect(mc.launch({ id: "existing" })).rejects.toThrow("Android guest RAM");
 });

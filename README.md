@@ -58,6 +58,7 @@ export MC_GPU_MODE=host          # host (virtio-gpu/virgl) | guest (SwiftShader)
 export MC_PORT_BASE=5555
 export MC_DOCKER=docker         # guest user belongs to docker group
 
+mc preflight --id main                             # inspect CPU and RAM headroom
 mc launch --id main --data-dir /data/mc/main      # 20 FPS default; ~1s resume, ~20s cold boot
 mc state
 mc screenshot --width 426 --out /tmp/shot.png     # or --stdout for a pipe
@@ -92,6 +93,13 @@ server world:
 
 Instance lookups are cached on disk because an SSH `docker ps` costs ~165 ms per call;
 `stop` pauses the container so a relaunch skips Android init.
+
+Before a new client launch, `mc` checks host and guest CPU load and available RAM. It
+requires a 1-minute load below 80% of the available CPUs on both, at least 6 GiB host and
+4 GiB guest available RAM for a new container, or 3 GiB host and 2 GiB guest to resume a
+paused one. `mc preflight --id ID`
+reports the measurements without launching; `mc launch` checks again immediately before
+starting. If measurements cannot be read, launch stops rather than guessing.
 
 ## Idle cleanup
 

@@ -38,6 +38,7 @@ Usage: mc <command> [flags]
   launch [--id main] [--data-dir DIR] [--width 854] [--height 480] [--fps 20] [--wait-for-menu]
   stop   [--id main] [--remove]        # pause by default (fast relaunch); --remove frees memory
   cleanup                              # pause idle clients, remove old paused clients
+  preflight [--id main]                # check CPU and RAM before launch
   list
   state  [--id main]
   screenshot [--id main] [--width N] [--out FILE] [--stdout]
@@ -81,6 +82,11 @@ export async function main(argv: string[]): Promise<number> {
     case "cleanup":
       out(await mc.cleanup());
       return 0;
+    case "preflight": {
+      const check = await mc.preflight(id);
+      out(check);
+      return check.ok ? 0 : 1;
+    }
     case "list":
       out(await mc.list());
       return 0;

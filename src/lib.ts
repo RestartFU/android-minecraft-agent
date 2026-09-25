@@ -2,9 +2,25 @@
 // inside a KVM guest, over SSH (docker) and adb.
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { availableParallelism } from "node:os";
 
 export type Size = { w: number; h: number };
 export type Container = { id: string; name: string; port: number; status: string; size: Size };
+export type ResourceState = { availableMiB: number; load1: number; cpus: number };
+export type ResourceSnapshot = { host: ResourceState; guest: ResourceState };
+export type LaunchMode = "new" | "resume";
+
+export function resourceIssues(snapshot: ResourceSnapshot, mode: LaunchMode): string[] {
+  const minHostMiB = mode === "new" ? 6144 : 3072;
+  const minGuestMiB = mode === "new" ? 4096 : 2048;
+  const issues: string[] = [];
+  if (snapshot.host.availableMiB < minHostMiB) issues.push(`host RAM: ${snapshot.host.availableMiB} MiB available; need ${minHostMiB} MiB`);
+  if (snapshot.guest.availableMiB < minGuestMiB) issues.push(`Android guest RAM: ${snapshot.guest.availableMiB} MiB available; need ${minGuestMiB} MiB`);
+  for (const [name, state] of [["host", snapshot.host], ["Android guest", snapshot.guest]] as const) {
+    if (state.load1 > state.cpus * 0.8) issues.push(`${name} CPU: 1-minute load ${state.load1} across ${state.cpus} CPUs; need 20% spare capacity`);
+  }
+  return issues;
+}
 
 const RUNNING_IDLE_MS = 60 * 60 * 1000;
 const PAUSED_IDLE_MS = 2 * 60 * 60 * 1000;
@@ -88,6 +104,35 @@ export class Mc {
     if (r.code !== 0) throw new Error(r.err.trim() || `docker ${cmd} failed`);
     if (/^(run|start|unpause|pause|rm)\b/.test(cmd)) await this.clearCache();
     return r.out;
+  }
+
+  private async resources(): Promise<ResourceSnapshot> {
+    const [hostMem, hostLoad, guest] = await Promise.all([
+      readFile("/proc/meminfo", "utf8"),
+      readFile("/proc/loadavg", "utf8"),
+      this.ssh("awk '/^MemAvailable:/ {print $2}' /proc/meminfo; awk '{print $1}' /proc/loadavg; nproc"),
+    ]);
+    if (guest.code !== 0) throw new Error(`cannot check Android guest resources: ${guest.err.trim()}`);
+    const hostKiB = Number(hostMem.match(/^MemAvailable:\s+(\d+)/m)?.[1]);
+    const hostLoad1 = Number(hostLoad.split(/\s+/)[0]);
+    const [guestKiB, guestLoad1, guestCpus] = guest.out.trim().split(/\s+/).map(Number);
+    const hostCpus = availableParallelism();
+    if (![hostKiB, hostCpus, guestKiB, guestCpus].every((n) => Number.isFinite(n) && n > 0) ||
+        ![hostLoad1, guestLoad1].every((n) => Number.isFinite(n) && n >= 0)) {
+      throw new Error("cannot read valid host and Android guest CPU/RAM measurements");
+    }
+    return {
+      host: { availableMiB: Math.floor(hostKiB / 1024), load1: hostLoad1, cpus: hostCpus },
+      guest: { availableMiB: Math.floor(guestKiB / 1024), load1: guestLoad1, cpus: guestCpus },
+    };
+  }
+
+  async preflight(id = "main", containers?: Container[]) {
+    const existing = (containers ?? await this.containers(true)).find((c) => c.id === id);
+    const mode: LaunchMode = existing ? "resume" : "new";
+    const resources = await this.resources();
+    const issues = resourceIssues(resources, mode);
+    return { ok: issues.length === 0, mode, resources, issues };
   }
 
   // Resolving an instance costs an SSH `docker ps` round-trip (~165ms), so cache the list
@@ -189,6 +234,8 @@ export class Mc {
     if (existing && ((opts.width !== undefined && opts.width !== existing.size.w) || (opts.height !== undefined && opts.height !== existing.size.h))) {
       throw new Error(`instance ${id} is ${existing.size.w}x${existing.size.h}; run mc stop --id ${id} --remove before changing resolution (its /data is preserved)`);
     }
+    const check = await this.preflight(id, existing ? [existing] : []);
+    if (!check.ok) throw new Error(`not enough resources to launch ${id}: ${check.issues.join("; ")}`);
     if (existing && isRunning(existing)) {
       // Container is up; make sure the game is running too.
       this.sizes.set(existing.port, existing.size);

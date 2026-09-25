@@ -30,6 +30,7 @@ Run `mc` from this repo's `bin` directory on `PATH`, or use `bun run src/mc.ts` 
 ## Core loop
 
 ```bash
+mc preflight --id main         # check host and guest CPU/RAM before launch
 mc launch --id main            # 20 FPS by default; ~1s warm, ~20s cold
 mc screenshot --out /tmp/s.png               # full resolution for visual checks
 mc click 426 240               # coordinates are in the last screenshot's pixels
@@ -39,6 +40,10 @@ mc stop                        # pause (fast relaunch); --remove frees memory
 
 ## Rules of thumb
 
+- **Check headroom before a new session.** `mc preflight --id ID` reports host and Android
+  guest CPU/RAM; `mc launch` repeats the check and refuses to start or resume when either
+  machine lacks headroom. Retry after the reported pressure clears. An already running
+  client remains usable.
 - **Keep FPS low for routine work.** New clients default to 20 FPS to reduce CPU use.
   Raise `--fps` only when the task needs smoother motion or a frame-rate measurement, and
   use the lowest cap that serves that task. An existing container keeps its launch cap;
