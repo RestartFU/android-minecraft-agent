@@ -51,6 +51,8 @@ mc stop                        # pause (fast relaunch); --remove frees memory
 - **Screenshot, then act on it.** `mc click` takes positional `X Y`, in the pixels of the last
   screenshot for that instance, including when the screenshot was downscaled. The in-game HUD
   is rendered by the game, so `uiautomator` cannot see it.
+- **Use `mc chat` for commands too.** It sends with the keyboard's Enter action, which works
+  even when a server's chat sidebar moves the on-screen Send button.
 - **Game UI needs a longer press.** Use `mc click X Y --action press --hold-ms 150` for menu
   buttons that ignore a quick tap. After opening a text field, wait for the keyboard and take
   another screenshot: the layout may move. For visual checks, launch at 1280×720 and use

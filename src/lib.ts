@@ -393,9 +393,15 @@ export class Mc {
     const s = this.sizeOf(c.port);
     await this.sh(c.port, `input tap ${Math.round(s.w * 0.5)} ${Math.round(s.h * 0.044)}`);
     await this.sleep(600);
+    await this.sh(c.port, `input tap ${Math.round(s.w * 0.4)} ${Math.round(s.h * 0.94)}`);
+    await this.sleep(600);
     await this.sh(c.port, `input text ${shellQuote(message.replace(/ /g, "%s"))}`);
+    // The send button moves when a server adds a chat sidebar; the IME enter action does not.
+    await this.sh(c.port, "input keyevent KEYCODE_ENTER");
     await this.sleep(200);
-    await this.sh(c.port, `input tap ${Math.round(s.w * 0.946)} ${Math.round(s.h * 0.385)}`);
+    await this.sh(c.port, "input keyevent KEYCODE_BACK");
+    await this.sleep(200);
+    await this.sh(c.port, `input tap ${Math.round(s.w * 0.03)} ${Math.round(s.h * 0.044)}`);
     return { ok: true };
   }
 
