@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for idle Android Minecraft clients every 10 minutes
+
+[Timer]
+OnCalendar=*:0/10
+Persistent=true
+Unit=android-minecraft-cleanup.service
+
+[Install]
+WantedBy=timers.target

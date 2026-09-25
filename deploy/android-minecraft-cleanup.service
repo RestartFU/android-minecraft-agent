@@ -1,0 +1,6 @@
+[Unit]
+Description=Clean up idle Android Minecraft clients
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/mc cleanup

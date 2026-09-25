@@ -28,3 +28,58 @@ test("launch reports when an existing container has a different resolution", asy
   mc.containers = async () => [{ id: "main", name: "mc-main", port: 5555, status: "Up", size: { w: 854, h: 480 } }];
   await expect(mc.launch({ width: 1280, height: 720 })).rejects.toThrow("mc stop --id main --remove");
 });
+
+test("cleanup gives existing clients grace, then pauses and removes idle containers", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mc-cleanup-"));
+  try {
+    const mc = new Mc(loadCfg({ HOME: dir }));
+    const c = { id: "old", name: "mc-old", port: 5555, status: "Up", size: { w: 854, h: 480 } };
+    const commands: string[] = [];
+    mc.containers = async () => [c];
+    Object.defineProperty(mc, "dm", { value: async (cmd: string) => {
+      commands.push(cmd);
+      if (cmd.startsWith("pause ")) c.status = "Up (Paused)";
+      return "";
+    } });
+    const start = 1_800_000_000_000;
+    expect((await mc.cleanup(start)).actions).toEqual([{ id: "old", action: "grace" }]);
+    expect((await mc.cleanup(start + 59 * 60_000)).actions).toEqual([]);
+    expect((await mc.cleanup(start + 60 * 60_000)).actions).toEqual([{ id: "old", action: "pause" }]);
+    expect((await mc.cleanup(start + 3 * 60 * 60_000 - 1)).actions).toEqual([]);
+    expect((await mc.cleanup(start + 3 * 60 * 60_000)).actions).toEqual([{ id: "old", action: "remove" }]);
+    expect(commands).toEqual(["pause 'mc-old'", "rm -f 'mc-old'"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("using a client resets its cleanup clock", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mc-active-"));
+  try {
+    const mc = new Mc(loadCfg({ HOME: dir }));
+    mc.containers = async () => [{ id: "active", name: "mc-active", port: 5555, status: "Up", size: { w: 854, h: 480 } }];
+    Object.defineProperty(mc, "adb", { value: async () => ({ code: 0, out: "", err: "" }) });
+    Object.defineProperty(mc, "dm", { value: async () => { throw new Error("active client was paused"); } });
+    const now = Date.now();
+    await mc.cleanup(now - 60 * 60_000);
+    await mc.resolve("active");
+    expect((await mc.cleanup(Date.now() + 1000)).actions).toEqual([]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("stop can remove a paused client without resuming it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mc-remove-"));
+  try {
+    const mc = new Mc(loadCfg({ HOME: dir }));
+    const commands: string[] = [];
+    mc.containers = async () => [{ id: "main", name: "mc-main", port: 5555, status: "Up (Paused)", size: { w: 854, h: 480 } }];
+    Object.defineProperty(mc, "adb", { value: async () => ({ code: 0, out: "", err: "" }) });
+    Object.defineProperty(mc, "dm", { value: async (cmd: string) => { commands.push(cmd); return ""; } });
+    expect(await mc.stop(undefined, false)).toEqual({ id: "main", removed: true });
+    expect(commands).toEqual(["rm -f 'mc-main'"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

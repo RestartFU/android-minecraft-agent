@@ -37,6 +37,7 @@ Usage: mc <command> [flags]
 
   launch [--id main] [--data-dir DIR] [--width 854] [--height 480] [--fps 20] [--wait-for-menu]
   stop   [--id main] [--remove]        # pause by default (fast relaunch); --remove frees memory
+  cleanup                              # pause idle clients, remove old paused clients
   list
   state  [--id main]
   screenshot [--id main] [--width N] [--out FILE] [--stdout]
@@ -76,6 +77,9 @@ export async function main(argv: string[]): Promise<number> {
       return 0;
     case "stop":
       out(await mc.stop(id, !bool(f, "remove")));
+      return 0;
+    case "cleanup":
+      out(await mc.cleanup());
       return 0;
     case "list":
       out(await mc.list());

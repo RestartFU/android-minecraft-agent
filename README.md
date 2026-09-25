@@ -65,6 +65,7 @@ mc click 426 240
 mc chat "hello from adb"
 mc connect zeqa.net 19132                          # join a server (client must be signed into Xbox)
 mc stop                                            # pause (fast); mc stop --remove to free memory
+mc cleanup                                         # pause/remove idle clients
 ```
 
 `mc screenshot` prints a file path by default (the agent then reads the PNG), or writes the
@@ -91,6 +92,17 @@ server world:
 
 Instance lookups are cached on disk because an SSH `docker ps` costs ~165 ms per call;
 `stop` pauses the container so a relaunch skips Android init.
+
+## Idle cleanup
+
+`mc cleanup` pauses a running client after 60 minutes without a CLI action, then removes a
+paused client after two more hours. The Minecraft `/data` directory persists, so the next
+launch recreates the container without losing sign-ins or worlds. The first cleanup check
+gives existing clients a full grace period. Listing clients does not count as activity.
+
+Install `deploy/android-minecraft-cleanup.service` and `.timer` as user systemd units and
+enable the timer to run cleanup every 10 minutes. The service expects the host's configured
+CLI at `~/.local/bin/mc`.
 
 ## Notes
 

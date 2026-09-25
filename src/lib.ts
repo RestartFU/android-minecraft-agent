@@ -6,6 +6,9 @@ import { dirname } from "node:path";
 export type Size = { w: number; h: number };
 export type Container = { id: string; name: string; port: number; status: string; size: Size };
 
+const RUNNING_IDLE_MS = 60 * 60 * 1000;
+const PAUSED_IDLE_MS = 2 * 60 * 60 * 1000;
+
 // adb shell and ssh execute strings through a shell, even when Bun receives an argv array.
 export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -104,6 +107,18 @@ export class Mc {
   }
   async clearCache() { try { await rm(this.cfg.cacheFile, { force: true }); } catch {} }
 
+  private activityFile(id: string) { return `${this.cfg.cacheFile}.activity-${encodeURIComponent(id)}`; }
+  private async lastActivity(id: string): Promise<number | null> {
+    try {
+      const at = Number(await readFile(this.activityFile(id), "utf8"));
+      return Number.isFinite(at) && at > 0 ? at : null;
+    } catch { return null; }
+  }
+  private async markActivity(id: string, at = Date.now()) {
+    await mkdir(dirname(this.cfg.cacheFile), { recursive: true });
+    await writeFile(this.activityFile(id), String(at));
+  }
+
   async containers(force = false): Promise<Container[]> {
     if (!force) {
       const c = await this.readCache();
@@ -131,6 +146,7 @@ export class Mc {
     if (!isRunning(c)) throw new Error(`instance ${c.id} is not running (${isPaused(c) ? "paused - run `mc launch` to resume in ~1s" : c.status})`);
     // Idempotent; recovers the adb connection after a VM restart.
     await this.adb(c.port, ["connect", this.dev(c.port)]);
+    await this.markActivity(c.id);
     return c;
   }
   private async nextPort(): Promise<number> {
@@ -178,6 +194,7 @@ export class Mc {
       this.sizes.set(existing.port, existing.size);
       const installed = await this.startGame(existing);
       if (opts.waitForMenu) await this.sleep(6000);
+      await this.markActivity(id);
       return { id, port: existing.port, device: this.dev(existing.port), size: `${existing.size.w}x${existing.size.h}`, warm: true, minecraftInstalled: installed, note: "already running" };
     }
 
@@ -190,6 +207,7 @@ export class Mc {
       if (!booted) throw new Error(`instance ${id} did not resume`);
       const installed = await this.startGame(existing);
       if (opts.waitForMenu) await this.sleep(6000);
+      await this.markActivity(id);
       return { id, port: existing.port, device: this.dev(existing.port), size: `${existing.size.w}x${existing.size.h}`, warm: true, minecraftInstalled: installed };
     }
 
@@ -206,18 +224,49 @@ export class Mc {
     if (!(await this.waitBoot(port))) throw new Error(`instance ${id} did not finish booting`);
     const installed = await this.startGame({ id, name, port, status: "Up", size: { w: width, h: height } });
     if (opts.waitForMenu) await this.sleep(8000);
+    await this.markActivity(id);
     return { id, port, device: this.dev(port), size: `${width}x${height}`, warm: false, minecraftInstalled: installed };
   }
 
   async stop(id?: string, keepWarm = true) {
-    const c = await this.resolve(id);
+    const cs = keepWarm ? [] : await this.containers(true);
+    const c = keepWarm ? await this.resolve(id) : id
+      ? cs.find((x) => x.id === id)
+      : cs.find(isRunning) ?? cs.find(isPaused);
+    if (!c) throw new Error(id ? `instance ${id} not found` : "no instance found");
     if (keepWarm) {
-      await this.dm(`pause ${c.name}`);
+      await this.dm(`pause ${shellQuote(c.name)}`);
+      await this.markActivity(c.id);
       return { id: c.id, paused: true, note: "run `mc launch` to resume in ~1s" };
     }
     await this.adb(c.port, ["disconnect", this.dev(c.port)]);
-    await this.dm(`rm -f ${c.name}`);
+    await this.dm(`rm -f ${shellQuote(c.name)}`);
+    await rm(this.activityFile(c.id), { force: true });
     return { id: c.id, removed: true };
+  }
+
+  async cleanup(now = Date.now()) {
+    const actions: { id: string; action: "grace" | "pause" | "remove" }[] = [];
+    for (const c of await this.containers(true)) {
+      let at = await this.lastActivity(c.id);
+      if (at === null || at > now) {
+        // Existing containers predate activity tracking. Give them a full grace period.
+        await this.markActivity(c.id, now);
+        actions.push({ id: c.id, action: "grace" });
+        continue;
+      }
+      const age = now - at;
+      if (isRunning(c) && age >= RUNNING_IDLE_MS) {
+        await this.dm(`pause ${shellQuote(c.name)}`);
+        await this.markActivity(c.id, now);
+        actions.push({ id: c.id, action: "pause" });
+      } else if (!isRunning(c) && age >= PAUSED_IDLE_MS) {
+        await this.dm(`rm -f ${shellQuote(c.name)}`);
+        await rm(this.activityFile(c.id), { force: true });
+        actions.push({ id: c.id, action: "remove" });
+      }
+    }
+    return { actions };
   }
 
   async list() {

@@ -63,7 +63,9 @@ mc stop                        # pause (fast relaunch); --remove frees memory
   retained by shell history. Complete sign-in in the Android UI using an appropriate private
   input method. The CLI does not automate purchases or account recovery.
 - **`stop` pauses by default** (~1.3s relaunch). Use `mc stop --remove` only when you want to
-  free the ~3GB the container holds.
+  free the ~3GB the container holds. The installed cleanup timer pauses running clients
+  after 60 minutes without CLI activity and removes paused clients after two more hours.
+  It preserves `/data` and gives clients from before activity tracking a full grace period.
 - **Don't kill other tasks' clients.** `mc list` shows running instances; only touch your own.
 - The ~20s cold boot is Android `init`; the fast path is resuming a paused container.
 
