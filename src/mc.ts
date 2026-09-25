@@ -35,7 +35,7 @@ const HELP = `mc - drive a Minecraft Bedrock client on Android (redroid in a KVM
 
 Usage: mc <command> [flags]
 
-  launch [--id main] [--data-dir DIR] [--width 854] [--height 480] [--fps 30] [--wait-for-menu]
+  launch [--id main] [--data-dir DIR] [--width 854] [--height 480] [--fps 20] [--wait-for-menu]
   stop   [--id main] [--remove]        # pause by default (fast relaunch); --remove frees memory
   list
   state  [--id main]

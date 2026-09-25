@@ -30,7 +30,7 @@ Run `mc` from this repo's `bin` directory on `PATH`, or use `bun run src/mc.ts` 
 ## Core loop
 
 ```bash
-mc launch --id main            # ~1s if the container is warm, ~20s cold; starts Minecraft
+mc launch --id main            # 20 FPS by default; ~1s warm, ~20s cold
 mc screenshot --out /tmp/s.png               # full resolution for visual checks
 mc click 426 240               # coordinates are in the last screenshot's pixels
 mc chat "hello"                # open chat, type, send
@@ -39,6 +39,10 @@ mc stop                        # pause (fast relaunch); --remove frees memory
 
 ## Rules of thumb
 
+- **Keep FPS low for routine work.** New clients default to 20 FPS to reduce CPU use.
+  Raise `--fps` only when the task needs smoother motion or a frame-rate measurement, and
+  use the lowest cap that serves that task. An existing container keeps its launch cap;
+  do not remove and recreate another task's client to change it.
 - **Screenshot, then act on it.** `mc click` takes positional `X Y`, in the pixels of the last
   screenshot for that instance, including when the screenshot was downscaled. The in-game HUD
   is rendered by the game, so `uiautomator` cannot see it.

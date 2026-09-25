@@ -58,7 +58,7 @@ export MC_GPU_MODE=host          # host (virtio-gpu/virgl) | guest (SwiftShader)
 export MC_PORT_BASE=5555
 export MC_DOCKER=docker         # guest user belongs to docker group
 
-mc launch --id main --data-dir /data/mc/main      # ~1s resume, ~20s cold boot
+mc launch --id main --data-dir /data/mc/main      # 20 FPS default; ~1s resume, ~20s cold boot
 mc state
 mc screenshot --width 426 --out /tmp/shot.png     # or --stdout for a pipe
 mc click 426 240

@@ -167,7 +167,7 @@ export class Mc {
     const name = `mc-${id}`;
     const width = opts.width ?? 854;
     const height = opts.height ?? 480;
-    const fps = opts.fpsCap ?? 30;
+    const fps = opts.fpsCap ?? 20;
     if (![width, height, fps].every((n) => Number.isInteger(n) && n > 0)) throw new Error("width, height, and fps must be positive integers");
     const existing = (await this.containers(true)).find((c) => c.id === id);
     if (existing && ((opts.width !== undefined && opts.width !== existing.size.w) || (opts.height !== undefined && opts.height !== existing.size.h))) {
