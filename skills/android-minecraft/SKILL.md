@@ -10,6 +10,9 @@ over `adb` by the `mc` CLI.
 
 ## Setup (once per shell)
 
+If `mc` is already installed as a host wrapper, use it directly; it supplies the guest
+connection settings. Otherwise, set these variables for your host and run the repo CLI:
+
 ```bash
 export MC_ADB=adb
 export MC_SSH_KEY=~/.ssh/mc-android
@@ -59,3 +62,16 @@ mc stop                        # pause (fast relaunch); --remove frees memory
   free the ~3GB the container holds.
 - **Don't kill other tasks' clients.** `mc list` shows running instances; only touch your own.
 - The ~20s cold boot is Android `init`; the fast path is resuming a paused container.
+
+## Improve this agent when use reveals a problem
+
+If the CLI or this skill is slow, or you find an edge case while doing a Minecraft task,
+make a focused improvement in the `RestartFU/android-minecraft-agent` checkout. Verify the
+affected behavior and update the skill when the workflow changes. Do not keep a separate
+local-only skill fix: the installed skill should point at this checkout.
+
+If you have push permission, commit the improvement and push **directly to this repo's
+`main` branch**. First fast-forward your local `main`; if the remote advances while you
+work, integrate it and rerun relevant checks before pushing. The same local checkout must
+end on the pushed commit, so the installed CLI and skill update at the same time. If you
+cannot push, leave the verified change in the checkout and report what remains to publish.

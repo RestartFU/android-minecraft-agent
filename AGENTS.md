@@ -23,6 +23,14 @@ Rules: screenshot then act on it; game buttons may need `--action press --hold-m
 touch your own instances (`mc list`); run `mc` from the repo with the `MC_*` env from
 [SETUP.md](./SETUP.md) set.
 
+When agent use exposes slowness or an edge case, improve the CLI or
+[skill](./skills/android-minecraft/SKILL.md) in this checkout, verify the affected behavior,
+and keep the skill installation linked to this checkout. Agents with push permission may
+commit and push these improvements directly to `main`; fast-forward before editing and
+integrate any concurrent remote changes before pushing. Keep this local checkout on the
+pushed commit so local use updates at the same time. If push permission is unavailable,
+leave the verified change locally and report it.
+
 ## Layout
 
 | Path | What |
